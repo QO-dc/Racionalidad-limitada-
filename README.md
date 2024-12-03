@@ -42,5 +42,6 @@ Al ejecutar la simulación, se observará cómo las estrategias de los jugadores
 
 Este trabajo demuestra cómo el dilema del prisionero puede ser utilizado para ilustrar la racionalidad limitada, un concepto clave en la teoría de juegos y la toma de decisiones. A través de la simulación interactiva, se pueden observar cómo las decisiones de los jugadores cambian a lo largo del tiempo y cómo estos ajustes reflejan su capacidad limitada para procesar toda la información disponible.
 
+### https://qo-dc.github.io/Racionalidad-limitada-/Index.html
 
 
