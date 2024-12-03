@@ -1,0 +1,173 @@
+---
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: fill
+    theme: flatly
+---
+
+
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(ggplot2)
+library(DT)
+library(dplyr)
+library(reshape2)
+```
+
+# Página 1: Evolución de las probabilidades de cooperación
+
+```{r}
+# Configuración inicial
+set.seed(42)  # Para reproducibilidad
+rounds <- 300  # Número de rondas
+memory <- data.frame(Round = integer(), Player1 = character(), Player2 = character(), 
+                     Payoff1 = numeric(), Payoff2 = numeric())
+
+# Función para calcular los pagos según las decisiones
+dynamic_payoff_matrix <- function(choice1, choice2, round) {
+  base_reward <- 3 + round * 0.3  # Recompensa base que aumenta más rápido con las rondas
+  defect_reward <- 5 + round * 0.1  # Recompensa por traicionar que crece más lento
+  penalty <- -1 - round * 0.4  # Penalización por traición mutua más severa
+  
+  if (choice1 == "Cooperate" && choice2 == "Cooperate") return(c(base_reward, base_reward))
+  if (choice1 == "Cooperate" && choice2 == "Defect") return(c(0, defect_reward))
+  if (choice1 == "Defect" && choice2 == "Cooperate") return(c(defect_reward, 0))
+  if (choice1 == "Defect" && choice2 == "Defect") return(c(penalty, penalty))
+}
+
+# Inicialización de probabilidades de cooperación
+prob_player1 <- 0.6  # Probabilidad inicial de cooperar (Jugador 1)
+prob_player2 <- 0.6  # Probabilidad inicial de cooperar (Jugador 2)
+
+# Estrategias de los jugadores basadas en aprendizaje
+strategy_player <- function(probability) {
+  if (runif(1) < probability) {
+    return("Cooperate")
+  } else {
+    return("Defect")
+  }
+}
+
+# Ajuste de probabilidades basado en resultados previos
+update_probability <- function(probability, own_payoff, opponent_choice, own_choice, learning_rate = 0.3) {
+  if (own_choice == "Cooperate" && opponent_choice == "Cooperate") {
+    probability <- probability + learning_rate * (1 - probability)
+  } else if (opponent_choice == "Defect") {
+    probability <- probability - learning_rate * probability * 0.3
+  } else if (own_choice == "Defect" && opponent_choice == "Defect") {
+    probability <- probability - learning_rate * probability * 0.5
+  }
+  return(max(0.1, min(0.9, probability)))  # Limitar entre 0.1 y 0.9
+}
+
+# Simulación del juego iterado
+for (r in 1:rounds) {
+  decision1 <- strategy_player(prob_player1)
+  decision2 <- strategy_player(prob_player2)
+  payoff <- dynamic_payoff_matrix(decision1, decision2, r)
+  
+  # Los jugadores observan las decisiones del oponente y ajustan su probabilidad
+  prob_player1 <- update_probability(prob_player1, payoff[1], decision2, decision1)
+  prob_player2 <- update_probability(prob_player2, payoff[2], decision1, decision2)
+  
+  # Registrar la información de la ronda
+  memory <- rbind(memory, data.frame(Round = r, Player1 = decision1, Player2 = decision2, 
+                                     Payoff1 = payoff[1], Payoff2 = payoff[2]))
+}
+
+# Calcular las probabilidades de cooperación
+calc_probabilities <- function(memory, rounds) {
+  probabilities <- data.frame(
+    Round = 1:rounds,
+    Player1_Prob = sapply(1:rounds, function(i) {
+      prob <- 0.6
+      for (j in 1:i) {
+        prob <- update_probability(prob, memory$Payoff1[j], memory$Player2[j], memory$Player1[j])
+      }
+      return(prob)
+    }),
+    Player2_Prob = sapply(1:rounds, function(i) {
+      prob <- 0.6
+      for (j in 1:i) {
+        prob <- update_probability(prob, memory$Payoff2[j], memory$Player1[j], memory$Player2[j])
+      }
+      return(prob)
+    })
+  )
+  return(probabilities)
+}
+
+# Obtener las probabilidades
+probabilities <- calc_probabilities(memory, rounds)
+
+# Contar las decisiones acumulativas de los jugadores
+decision_count <- data.frame(
+  Round = 1:rounds,
+  Cooperate_Player1 = sapply(1:rounds, function(i) sum(memory$Player1[1:i] == "Cooperate")),
+  Defect_Player1 = sapply(1:rounds, function(i) sum(memory$Player1[1:i] == "Defect")),
+  Cooperate_Player2 = sapply(1:rounds, function(i) sum(memory$Player2[1:i] == "Cooperate")),
+  Defect_Player2 = sapply(1:rounds, function(i) sum(memory$Player2[1:i] == "Defect"))
+)
+
+# Calcular los pagos acumulados
+accumulated_payoffs <- data.frame(
+  Round = 1:rounds,
+  Accumulated_Payoff_Player1 = cumsum(memory$Payoff1),
+  Accumulated_Payoff_Player2 = cumsum(memory$Payoff2)
+)
+
+```
+
+```{r}
+# Gráfico de la evolución de las probabilidades de cooperación
+ggplot(probabilities, aes(x = Round)) +
+  geom_line(aes(y = Player1_Prob, color = "Jugador 1"), size = 1) +
+  geom_line(aes(y = Player2_Prob, color = "Jugador 2"), size = 1) +
+  labs(title = "Evolución de las probabilidades de cooperación",
+       x = "Ronda", y = "Probabilidad de Cooperación", color = "Jugador") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+# Página 2: Decisiones acumulativas de cooperación y traición
+
+```{r}
+# Gráfico de decisiones acumulativas de cooperación y traición
+ggplot(decision_count, aes(x = Round)) +
+  geom_line(aes(y = Cooperate_Player1, color = "Jugador 1 Coopera"), size = 1) +
+  geom_line(aes(y = Defect_Player1, color = "Jugador 1 Traiciona"), size = 1) +
+  geom_line(aes(y = Cooperate_Player2, color = "Jugador 2 Coopera"), size = 1) +
+  geom_line(aes(y = Defect_Player2, color = "Jugador 2 Traiciona"), size = 1) +
+  labs(title = "Decisiones acumulativas de cooperación y traición",
+       x = "Ronda", y = "Número acumulado de decisiones", color = "Decisión") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+# Página 3: Evolución de los pagos acumulados
+
+```{r}
+# Gráfico de la evolución de los pagos acumulados
+ggplot(accumulated_payoffs, aes(x = Round)) +
+  geom_line(aes(y = Accumulated_Payoff_Player1, color = "Jugador 1"), size = 1) +
+  geom_line(aes(y = Accumulated_Payoff_Player2, color = "Jugador 2"), size = 1) +
+  labs(title = "Evolución de los pagos acumulados",
+       x = "Ronda", y = "Pago acumulado", color = "Jugador") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+# Página 4: Historial de decisiones y pagos
+
+```{r}
+# Tabla del historial de decisiones y pagos
+datatable(memory, options = list(pageLength = 10, scrollX = TRUE), 
+          rownames = FALSE, caption = 'Historial de decisiones y pagos')
+```
+
+
+
+
+
